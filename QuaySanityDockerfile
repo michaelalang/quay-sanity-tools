@@ -1,0 +1,15 @@
+FROM registry.access.redhat.com/ubi8/python-39
+# Add application sources to a directory that the assemble script expects them
+# and set permissions so that the container runs without root access
+USER 0
+COPY quay-db-2-storage-consistency.py /tmp/src/
+COPY quay-storage-polution.py /tmp/src/
+COPY quay-sanity-requirements.txt /tmp/src/requirements.txt
+RUN /usr/bin/fix-permissions /tmp/src
+USER 1001
+
+# Install the dependencies
+RUN /usr/libexec/s2i/assemble
+ENV PATH="${PATH}:/opt/app-root/src"
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["/bin/echo 'please specify quay-db-2-storage-consistency.py or quay-storage-polution.py'"]
