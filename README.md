@@ -5,7 +5,7 @@ these are inofficial tools to verify consistency between Quay DB content and Qua
 ## usage 
 
 * required Environment variables
-    * POSTGRESURI='postgresql://<user>:<password>@<server>/<dbname>'
+    * POSTGRESURI='postgresql://`<user>`:`<password>`@`<server>`/`<dbname>`'
     * AWS_ACCESS_KEY_ID=
     * AWS_SECRET_ACCESS_KEY=
     * ENDPOINT=
