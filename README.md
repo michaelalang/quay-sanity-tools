@@ -10,6 +10,7 @@ these are inofficial tools to verify consistency between Quay DB content and Qua
     * AWS_SECRET_ACCESS_KEY=
     * ENDPOINT=
     * BUCKET=
+    * MAXTHREADS=
 
 running the tools without parameters to get the possible tools to run
 
@@ -30,6 +31,7 @@ $ export AWS_ACCESS_KEY_ID=test
 $ export AWS_SECRET_ACCESS_KEY=test
 $ export ENDPOINT=https://localhost
 $ export BUCKET=quay-registry
+$ export MAXTHREADS=50
 
 $ podman run -ti --rm -e POSTGRESURI=${POSTGRESURI} \
    -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -50,6 +52,7 @@ $ export AWS_ACCESS_KEY_ID=test
 $ export AWS_SECRET_ACCESS_KEY=test
 $ export ENDPOINT=https://localhost
 $ export BUCKET=quay-registry
+$ export MAXTHREADS=50
 
 $ podman run -ti --rm -e POSTGRESURI=${POSTGRESURI} \
    -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
