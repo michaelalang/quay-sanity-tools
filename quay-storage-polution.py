@@ -4,7 +4,7 @@ import psycopg2
 from psycopg2 import pool
 import boto3, botocore
 from botocore.client import Config
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from queue import Queue
 import os, sys
 from time import sleep
@@ -90,6 +90,7 @@ if __name__ == '__main__':
 
     while not polution_empty: sleep(0.1)
     polution.join()
+    wait(threads)
     logger.info(f"Processed {total} Found {poluted.qsize()} items")
     while not poluted.empty():
         logger.info(f"poluting content {poluted.get(timeout=1)} found in Storage but not in DB")

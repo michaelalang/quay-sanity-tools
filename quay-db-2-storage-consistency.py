@@ -5,7 +5,7 @@ from psycopg2 import pool
 import boto3, botocore
 from botocore.client import Config
 import os, sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 import logging
 import optparse
 from queue import Queue
@@ -93,3 +93,5 @@ if __name__ == '__main__':
     threads.append(ThreadPoolExecutor().submit(fetch_db_items))    
     for x in range(0, MAXTHREADS):
         threads.append(ThreadPoolExecutor().submit(DBcheck(conn=pgpool.getconn()).start))
+
+    wait(threads)
