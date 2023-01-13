@@ -56,12 +56,13 @@ class DBcheck(object):
         self._s3  = S3check(bucket=BUCKET, s3config=S3CONFIG, parent=self)
     def start(self):
         global Images, Blobs, blobs_finished
-        while all([not Blobs.empty(),
+        while any([not Blobs.empty(),
                    not blobs_finished]):
             record = Blobs.get(timeout=1)
             logger.debug(f"checking {record[0]} from DB")
             if not self._s3.check_blob_on_storage(record):
                 Images.put(self.resolve_image_namefrom_blob(record[0]))
+            Blobs.task_done()
     def resolve_image_namefrom_blob(self, uuid):
         self._cur.execute(f"""
         SELECT repository.name FROM imagestorage 
@@ -81,10 +82,9 @@ def fetch_db_items():
             cur.execute("SELECT count(uuid) FROM imagestorage")
             total = cur.fetchone()[0]
             logger.info(f"Found {total} blobs in DB")
-            cur.itersize(10000)
             cur.execute("SELECT uuid, image_size, content_checksum FROM imagestorage")
             for record in cur:
-                logger.debug(f"adding record {record}")
+                logger.info(f"adding record {record}")
                 Blobs.put(record)
         blobs_finished = True
 
@@ -97,6 +97,7 @@ if __name__ == '__main__':
     
     threads.append(ThreadPoolExecutor().submit(fetch_db_items))    
     for x in range(0, MAXTHREADS):
+        logger.info(f'starting Thread {x}')
         threads.append(ThreadPoolExecutor().submit(DBcheck(conn=pgpool.getconn()).start))
 
     Blobs.join()
