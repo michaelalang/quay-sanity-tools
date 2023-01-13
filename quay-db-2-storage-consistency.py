@@ -84,7 +84,7 @@ def fetch_db_items():
             logger.info(f"Found {total} blobs in DB")
             cur.execute("SELECT uuid, image_size, content_checksum FROM imagestorage")
             for record in cur:
-                logger.info(f"adding record {record}")
+                logger.debug(f"adding record {record}")
                 Blobs.put(record)
         blobs_finished = True
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     
     threads.append(ThreadPoolExecutor().submit(fetch_db_items))    
     for x in range(0, MAXTHREADS):
-        logger.info(f'starting Thread {x}')
+        logger.debug(f'starting Thread {x}')
         threads.append(ThreadPoolExecutor().submit(DBcheck(conn=pgpool.getconn()).start))
 
     Blobs.join()
