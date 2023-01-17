@@ -23,6 +23,7 @@ BUCKET = os.environ.get('BUCKET', '')
 REGPATH = os.environ.get('REGPATH', 'datastorage/registry/sha256')
 POSTGRESURI = os.environ.get('POSTGRESURI', False)
 MAXTHREADS = int(os.environ.get('MAXTHREADS', 10))
+MAXDBTHREADS = int(os.environ.get('MAXDBTHREADS', 5))
 blobs_finished = False
 Blobs = Queue()
 Images = Queue()
@@ -56,14 +57,15 @@ class DBcheck(object):
         self._s3  = S3check(bucket=BUCKET, s3config=S3CONFIG, parent=self)
     def start(self):
         global Images, Blobs, blobs_finished
-        while any([not Blobs.empty(),
-                   not blobs_finished]):
+        while not all([Blobs.empty(),
+                       blobs_finished]):
             record = Blobs.get(timeout=1)
             logger.debug(f"checking {record[0]} from DB")
             if not self._s3.check_blob_on_storage(record):
                 Images.put(self.resolve_image_namefrom_blob(record[0]))
             Blobs.task_done()
     def resolve_image_namefrom_blob(self, uuid):
+        return uuid
         self._cur.execute(f"""
         SELECT repository.name FROM imagestorage 
         LEFT JOIN manifestblob ON imagestorage.id = manifestblob.blob_id
@@ -73,20 +75,22 @@ class DBcheck(object):
         return self._cur.fetchone()
 
 threads = []
-pgpool = psycopg2.pool.ThreadedConnectionPool(1, MAXTHREADS+1, POSTGRESURI)
+dbthreads = []
+pgpool = psycopg2.pool.ThreadedConnectionPool(1, MAXTHREADS+MAXDBTHREADS+1, POSTGRESURI)
 
-def fetch_db_items():
+def fetch_db_items(dbc, offset, limit):
     global Blobs, pgpool, blobs_finished
-    with pgpool.getconn() as dbc:
+    #with pgpool.getconn() as dbc:
+    if True:
         with dbc.cursor() as cur:
             cur.execute("SELECT count(uuid) FROM imagestorage")
             total = cur.fetchone()[0]
-            logger.info(f"Found {total} blobs in DB")
-            cur.execute("SELECT uuid, image_size, content_checksum FROM imagestorage")
+            logger.info(f"Found {total} blobs in DB, doing offset {offset} limit {limit}")
+            cur.execute(f"SELECT uuid, content_checksum FROM imagestorage OFFSET {offset} LIMIT {limit}")
             for record in cur:
                 logger.debug(f"adding record {record}")
                 Blobs.put(record)
-        blobs_finished = True
+        #blobs_finished = True
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
@@ -95,10 +99,36 @@ if __name__ == '__main__':
     
     if options.debug:   logger.setLevel(logging.DEBUG)
     
-    threads.append(ThreadPoolExecutor().submit(fetch_db_items))    
-    for x in range(0, MAXTHREADS):
-        logger.debug(f'starting Thread {x}')
-        threads.append(ThreadPoolExecutor().submit(DBcheck(conn=pgpool.getconn()).start))
-
-    Blobs.join()
+    with pgpool.getconn() as dbc:
+        with dbc.cursor() as cur:
+            cur.execute("SELECT count(uuid) FROM imagestorage")
+            total = cur.fetchone()[0]
+    with ThreadPoolExecutor(max_workers=MAXTHREADS+MAXDBTHREADS) as tpe:
+        limit = total / MAXDBTHREADS
+        offset = 0
+        with pgpool.getconn() as dbc:
+            for x in range(0, MAXDBTHREADS):
+                logger.debug(f'starting DBThread {x}')
+                dbthreads.append(tpe.submit(fetch_db_items, dbc, round(offset), round(limit)))    
+                offset += limit+1
+    
+        while len(list(filter(lambda x: x.running(), dbthreads))) > 0:
+            print(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {Blobs.qsize()} objects to check")
+            sleep(1)
+    
+        wait(dbthreads)
+        print(f"starting on {Blobs.qsize()} objects to check")
+        #sys.exit(1)
+        with pgpool.getconn() as dbc:
+            for x in range(0, MAXTHREADS):
+                logger.debug(f'starting Thread {x}')
+                threads.append(tpe.submit(DBcheck(conn=dbc).start)) # pgpool.getconn()).start))
+    
+        while not len(list(filter(lambda x: x.running(), threads))) < 1:
+            print(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {len(list(filter(lambda x: x.running(), threads)))} Threads running. {Blobs.qsize()} objects to check")
+            sleep(5)
+    while not Images.empty():
+        blob = Images.get()
+        print(f"Missing Blob {blob} in Backend")
+        Images.task_done()
     wait(threads)
