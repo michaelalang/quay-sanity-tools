@@ -77,6 +77,13 @@ def s3thread():
             total += 1
     polution_empty = True
 
+def s3cleanup(s3, cobj):
+    try:
+        print(f"cleaning up {cobj}")
+        s3.delete_object(Key=cobj, Bucket=BUCKET)
+    except Exception as cleanerr:
+        print(f"cleanup error for object {cobj} {cleanerr}")
+
 if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('-d', '--debug', action='store_true', default=False)
@@ -92,6 +99,20 @@ if __name__ == '__main__':
     polution.join()
     wait(threads)
     logger.info(f"Processed {total} Found {poluted.qsize()} items")
+    if DELETE:
+        try:
+            s3 = boto3.client('s3',
+                        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                        aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                        endpoint_url=os.environ.get('ENDPOINT'),
+                        config=S3CONFIG,
+                        verify=bool(os.environ.get('SSL_VERIFY', True)))
+        except Exception as e:
+            logger.error(str(e))
+            sys.exit(1)
     while not poluted.empty():
-        logger.info(f"poluting content {poluted.get(timeout=1)} found in Storage but not in DB")
+        cobj = poluted.get(timeout=1)
+        logger.info(f"poluting content {cobj} found in Storage but not in DB")
+        if DELETE:
+            s3cleanup(s3, cobj)
         poluted.task_done()

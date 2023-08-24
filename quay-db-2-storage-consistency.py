@@ -46,7 +46,7 @@ class S3check(object):
             self._s3.head_object(
                     Bucket=self._bucket, Key=f"{REGPATH}/{bdir}/{blob}")
         except botocore.exceptions.ClientError:
-            logger.error(f"{self._parent.resolve_image_namefrom_blob(record[0])[0]} missing blob {REGPATH}/{bdir}/{blob}")
+            logger.debug(f"{self._parent.resolve_image_namefrom_blob(record[0])[0]} missing blob {REGPATH}/{bdir}/{blob}")
             return False
         return True
 
@@ -65,14 +65,27 @@ class DBcheck(object):
                 Images.put(self.resolve_image_namefrom_blob(record[0]))
             Blobs.task_done()
     def resolve_image_namefrom_blob(self, uuid):
+        try:
+            #self._cur.execute(f"""
+            #SELECT public.user.username, repository.name AS name, tag.name AS tag FROM imagestorage
+            #LEFT JOIN public.manifestblob ON imagestorage.id = manifestblob.blob_id
+            #LEFT JOIN public.repository ON manifestblob.repository_id = repository.id
+			#LEFT JOIN public.user ON public.user.id  = repository.namespace_user_id
+            #LEFT JOIN public.tag ON manifestblob.id = tag.manifest_id
+            #WHERE imagestorage.uuid = '{uuid}'
+            #""")
+            self._cur.execute(f"""
+            SELECT public.user.username AS username, repository.name, tag.name AS tag FROM imagestorage 
+            LEFT JOIN manifestblob ON imagestorage.id = manifestblob.blob_id 
+            LEFT JOIN repository ON manifestblob.repository_id = repository.id 
+            LEFT JOIN tag ON repository.id = tag.repository_id 
+            LEFT JOIN public.user ON repository.namespace_user_id = public.user.id 
+            WHERE imagestorage.uuid = '{uuid}';
+            """)
+            return self._cur.fetchone()
+        except Exception as reserr:
+            logger.error(f"resolving blob uuid to image failed {reserr}")
         return uuid
-        self._cur.execute(f"""
-        SELECT repository.name FROM imagestorage 
-        LEFT JOIN manifestblob ON imagestorage.id = manifestblob.blob_id
-        LEFT JOIN repository ON manifestblob.repository_id = repository.id
-        WHERE imagestorage.uuid = '{uuid}'
-        """)
-        return self._cur.fetchone()
 
 threads = []
 dbthreads = []
@@ -113,7 +126,7 @@ if __name__ == '__main__':
                 offset += limit+1
     
         while len(list(filter(lambda x: x.running(), dbthreads))) > 0:
-            print(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {Blobs.qsize()} objects to check")
+            logger.info(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {Blobs.qsize()} objects to check")
             sleep(1)
     
         wait(dbthreads)
@@ -125,10 +138,14 @@ if __name__ == '__main__':
                 threads.append(tpe.submit(DBcheck(conn=dbc).start)) # pgpool.getconn()).start))
     
         while not len(list(filter(lambda x: x.running(), threads))) < 1:
-            print(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {len(list(filter(lambda x: x.running(), threads)))} Threads running. {Blobs.qsize()} objects to check")
+            logger.debug(f"{len(list(filter(lambda x: x.running(), dbthreads)))} DB Threads running. {len(list(filter(lambda x: x.running(), threads)))} Threads running. {Blobs.qsize()} objects to check")
             sleep(5)
+    seen = set([])
     while not Images.empty():
         blob = Images.get()
-        print(f"Missing Blob {blob} in Backend")
+        if blob == (None, None, None):    continue
+        if blob in seen:    continue
+        logger.info(f"Missing Blob {'/'.join(blob[:2])}:{blob[-1]} in Backend")
+        seen.add(blob)
         Images.task_done()
     wait(threads)
